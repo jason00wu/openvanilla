@@ -182,16 +182,39 @@ static void TestPendingPreservedAndNotDeferred()
     EXPECT(english.englishMode() == false);
 }
 
+static OpenVanilla::SimplexPunctuationDecision Punctuation(
+    bool builtIn, bool english, bool shiftOrChord, bool capsLock, bool pending, char key)
+{
+    return OpenVanilla::DecideSimplexUnshiftedPunctuation(builtIn, english, shiftOrChord, capsLock, pending, key);
+}
+
 static void TestPunctuationAndCapsLock()
 {
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, false, '.') == SimplexPunctuationDecision::DirectHalfwidth);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, false, ',') == SimplexPunctuationDecision::DirectHalfwidth);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, true, '.') == SimplexPunctuationDecision::KeepPending);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, true, ',') == SimplexPunctuationDecision::KeepPending);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, true, false, '.') == SimplexPunctuationDecision::NotSpecial);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, true, true, ',') == SimplexPunctuationDecision::NotSpecial);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, false, '>') == SimplexPunctuationDecision::NotSpecial);
-    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(false, false, false, '.') == SimplexPunctuationDecision::NotSpecial);
+    const bool modes[] = {false, true};
+    const bool caps[] = {false, true};
+    const char keys[] = {'.', ','};
+    for (bool english : modes) {
+        for (bool capsLock : caps) {
+            for (char key : keys) {
+                EXPECT(Punctuation(true, english, false, capsLock, false, key) == SimplexPunctuationDecision::EmitThroughWidthFilter);
+                EXPECT(Punctuation(true, english, false, capsLock, true, key) == SimplexPunctuationDecision::KeepPending);
+                EXPECT(OpenVanilla::SimplexPunctuationAfterWidthPreference(key, false) == (uint32_t)(unsigned char)key);
+            }
+            EXPECT(OpenVanilla::SimplexPunctuationAfterWidthPreference('.', true) == 0xFF0Eu);
+            EXPECT(OpenVanilla::SimplexPunctuationAfterWidthPreference(',', true) == 0xFF0Cu);
+            EXPECT(Punctuation(true, english, true, capsLock, false, '.') == SimplexPunctuationDecision::NotSpecial);
+            EXPECT(Punctuation(true, english, true, capsLock, true, ',') == SimplexPunctuationDecision::NotSpecial);
+            EXPECT(Punctuation(true, english, false, capsLock, false, '<') == SimplexPunctuationDecision::NotSpecial);
+            EXPECT(Punctuation(true, english, false, capsLock, false, '>') == SimplexPunctuationDecision::NotSpecial);
+            EXPECT(Punctuation(false, english, false, capsLock, false, '.') == SimplexPunctuationDecision::NotSpecial);
+        }
+    }
+
+    SimplexShiftToggle session;
+    EXPECT(session.englishMode() == false);
+    EXPECT(Punctuation(true, false, false, false, true, '.') == SimplexPunctuationDecision::KeepPending);
+    EXPECT(session.englishMode() == false);
+    EXPECT(Punctuation(true, false, false, false, false, '.') == SimplexPunctuationDecision::EmitThroughWidthFilter);
 
     EXPECT(OpenVanilla::SimplexCapsLockBypassesChinese(true) == false);
     EXPECT(OpenVanilla::SimplexCapsLockBypassesChinese(false) == true);

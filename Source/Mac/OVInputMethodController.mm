@@ -317,9 +317,7 @@ using namespace OpenVanilla;
     if ([self builtInSimplexActive]) {
         OpenVanilla::SharedSimplexShiftToggle().noteKeyDown();
         [self hideSimplexModeTooltipIfShown];
-        if (OpenVanilla::RouteSimplexKeyDown(true, OpenVanilla::SharedSimplexShiftToggle().englishMode()) == OpenVanilla::SimplexKeyRoute::EnglishPassThrough) {
-            return NO;
-        }
+        bool englishMode = OpenVanilla::SharedSimplexShiftToggle().englishMode();
         NSString *charsForPunctuation = event.characters;
         char punctuation = 0;
         if (charsForPunctuation.length == 1) {
@@ -330,16 +328,21 @@ using namespace OpenVanilla;
         }
         NSEventModifierFlags punctuationFlags = event.modifierFlags;
         bool punctuationChord = (punctuationFlags & (NSEventModifierFlagShift | NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl)) != 0;
+        bool punctuationCaps = (punctuationFlags & NSEventModifierFlagCapsLock) != 0;
         OpenVanilla::SimplexPunctuationDecision punctuationDecision = OpenVanilla::DecideSimplexUnshiftedPunctuation(
-            true, punctuationChord, [self simplexCompositionIsPending], punctuation);
-        if (punctuationDecision == OpenVanilla::SimplexPunctuationDecision::DirectHalfwidth) {
-            NSString *halfwidth = punctuation == '.' ? @"." : @",";
-            [client insertText:halfwidth replacementRange:NSMakeRange(NSNotFound, NSNotFound)];
-            return YES;
-        }
+            true, englishMode, punctuationChord, punctuationCaps, [self simplexCompositionIsPending], punctuation);
         if (punctuationDecision == OpenVanilla::SimplexPunctuationDecision::KeepPending) {
             [OVModuleManager defaultManager].loaderService->beep();
             return YES;
+        }
+        if (punctuationDecision == OpenVanilla::SimplexPunctuationDecision::EmitThroughWidthFilter) {
+            NSString *base = punctuation == '.' ? @"." : @",";
+            NSString *text = [[OVModuleManager defaultManager] filteredStringWithString:base];
+            [client insertText:text replacementRange:NSMakeRange(NSNotFound, NSNotFound)];
+            return YES;
+        }
+        if (OpenVanilla::RouteSimplexKeyDown(true, englishMode) == OpenVanilla::SimplexKeyRoute::EnglishPassThrough) {
+            return NO;
         }
     }
 

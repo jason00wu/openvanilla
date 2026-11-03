@@ -47,7 +47,11 @@ enum class SimplexShiftResolution {
 
 enum class SimplexPunctuationDecision {
     NotSpecial,
-    DirectHalfwidth,
+    // Insert the ASCII base, then the existing half-width-to-full-width
+    // preference. The caller must not skip that preference.
+    EmitThroughWidthFilter,
+    // Pending Chinese stays. No punctuation is inserted, committed, discarded
+    // or stored for a later key.
     KeepPending
 };
 
@@ -247,17 +251,37 @@ inline SimplexShiftResolution ApplySimplexShiftTap(SimplexShiftToggle &session, 
     return SimplexShiftResolution::Switched;
 }
 
-// Unshifted "." and "," in built-in Simplex Chinese. Shift, Command, Option
-// and Control stay on the existing path. A pending composition is left alone.
-inline SimplexPunctuationDecision DecideSimplexUnshiftedPunctuation(bool builtInSimplexChinese, bool shiftOrChord, bool pending, char key)
+// Unshifted "." and "," for built-in Simplex, in Chinese and in Shift English,
+// with or without Caps Lock. Shift, Command, Option and Control, including
+// "<" and ">", stay on the existing path.
+inline SimplexPunctuationDecision DecideSimplexUnshiftedPunctuation(
+    bool builtInSimplex, bool englishMode, bool shiftOrChord, bool capsLock, bool pending, char key)
 {
-    if (!builtInSimplexChinese || shiftOrChord || (key != '.' && key != ',')) {
+    (void)englishMode;
+    (void)capsLock;
+    if (!builtInSimplex || shiftOrChord || (key != '.' && key != ',')) {
         return SimplexPunctuationDecision::NotSpecial;
     }
     if (pending) {
         return SimplexPunctuationDecision::KeepPending;
     }
-    return SimplexPunctuationDecision::DirectHalfwidth;
+    return SimplexPunctuationDecision::EmitThroughWidthFilter;
+}
+
+// NSStringTransformFullwidthToHalfwidth reversed, measured 2026-11-03:
+// "." -> U+FF0E, "," -> U+FF0C. Off leaves ASCII. This is the existing
+// preference, not the Simplex candidate list.
+inline uint32_t SimplexPunctuationAfterWidthPreference(char key, bool halfWidthToFullWidth)
+{
+    if (halfWidthToFullWidth) {
+        if (key == '.') {
+            return 0xFF0Eu;
+        }
+        if (key == ',') {
+            return 0xFF0Cu;
+        }
+    }
+    return (uint32_t)(unsigned char)key;
 }
 
 // Built-in Simplex Chinese ignores Caps Lock as an English bypass. The caller
