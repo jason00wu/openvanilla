@@ -175,6 +175,7 @@
 		6AC9E19321AB554000AF6B69 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		6AC9E19421AB554000AF6B69 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		6ACB49C215E49EA700380B82 /* OVInputMethodController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = OVInputMethodController.mm; sourceTree = "<group>"; };
+		A7E3C1D12F10AA0100AB3201 /* SimplexShiftToggle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = SimplexShiftToggle.h; sourceTree = "<group>"; };
 		6ACD128723688A32005046C7 /* NotarizedArchives */ = {isa = PBXFileReference; lastKnownFileType = folder; path = NotarizedArchives; sourceTree = "<group>"; };
 		6AD29A4C2ED4CA6000384421 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = en.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		6AD29A4E2ED4CA7100384421 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
@@ -371,6 +372,7 @@
 				D4F50BBF2B289C8C00C6C364 /* AppDelegate.swift */,
 				6ABBAF1D15CD615B0080EE7D /* OVInputMethodController.h */,
 				6ACB49C215E49EA700380B82 /* OVInputMethodController.mm */,
+				A7E3C1D12F10AA0100AB3201 /* SimplexShiftToggle.h */,
 				D4F50BC82B28A15300C6C364 /* NonModalAlertWindowController.swift */,
 				D4F50BBB2B28898E00C6C364 /* UpdateChecker.swift */,
 				D4F50BBD2B28998500C6C364 /* UserDefaultsPropertyWrapper.swift */,

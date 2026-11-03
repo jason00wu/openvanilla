@@ -188,3 +188,8 @@
 "Advanced" = "Advanced";
 "Create System Report" = "Create System Report";
 "You can create a system report and attach it when filing an issue, so the developers can help you better." = "You can create a system report and attach it when filing an issue, so the developers can help you better.";
+
+/* Built-in Simplex Shift toggle. */
+"Simplex: Chinese" = "Simplex: Chinese";
+"Simplex: English" = "Simplex: English";
+"Finish or cancel the current composition before switching." = "Finish or cancel the current composition before switching.";

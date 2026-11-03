@@ -27,6 +27,7 @@
 
 #import "OVInputMethodController.h"
 #import "OpenVanilla-Swift.h"
+#include "SimplexShiftToggle.h"
 
 @import OpenVanilla;
 @import OpenVanillaImpl;
@@ -48,6 +49,15 @@ using namespace OpenVanilla;
 }
 
 - (BOOL)handleOVKey:(OVKey &)key client:(id)client;
+- (BOOL)builtInSimplexActive;
+- (BOOL)simplexCompositionIsPending;
+- (OpenVanilla::SimplexShiftAction)trackSimplexShiftEvent:(NSEvent *)event;
+- (void)applySimplexShiftTap:(id)client;
+- (void)presentSimplexModeTooltip:(id)client;
+- (void)presentSimplexPendingPrompt:(id)client;
+- (NSPoint)caretOriginForClient:(id)client;
+- (void)hideSimplexModeTooltipIfShown;
+- (void)toggleSimplexChineseEnglishModeAction:(id)sender;
 - (void)handleInputMethodChange:(NSNotification *)notification;
 - (void)handleCandidateSelected:(NSNotification *)notification;
 - (void)updateClientComposingBuffer:(id)sender;
@@ -90,6 +100,14 @@ using namespace OpenVanilla;
 - (NSMenu *)menu
 {
     NSMenu *menu = [[NSMenu alloc] init];
+    if ([self builtInSimplexActive]) {
+        BOOL english = OpenVanilla::SharedSimplexShiftToggle().englishMode();
+        NSString *title = english ? NSLocalizedString(@"Simplex: English", @"") : NSLocalizedString(@"Simplex: Chinese", @"");
+        NSMenuItem *modeItem = [[NSMenuItem alloc] initWithTitle:title action:@selector(toggleSimplexChineseEnglishModeAction:) keyEquivalent:@""];
+        modeItem.target = self;
+        [menu addItem:modeItem];
+        [menu addItem:[NSMenuItem separatorItem]];
+    }
 
     NSString *activeInputMethodIdentifier = [OVModuleManager defaultManager].activeInputMethodIdentifier;
     NSArray *inputMethodIdentifiers = [OVModuleManager defaultManager].inputMethodIdentifiers;
@@ -154,6 +172,8 @@ using namespace OpenVanilla;
 
 - (void)activateServer:(id)client
 {
+    OpenVanilla::SharedSimplexShiftToggle().cancelGesture();
+    [self hideSimplexModeTooltipIfShown];
     [OVModuleManager defaultManager].candidateService->resetAll();
 
     NSString *activeInputMethodIdentifier = [OVModuleManager defaultManager].activeInputMethodIdentifier;
@@ -206,6 +226,8 @@ using namespace OpenVanilla;
 
 - (void)deactivateServer:(id)client
 {
+    OpenVanilla::SharedSimplexShiftToggle().cancelGesture();
+    [self hideSimplexModeTooltipIfShown];
     if (_inputMethodContext) {
         _inputMethodContext->stopSession([OVModuleManager defaultManager].loaderService);
         delete _inputMethodContext;
@@ -264,20 +286,39 @@ using namespace OpenVanilla;
 - (BOOL)handleEvent:(NSEvent *)event client:(id)client
 {
     if (event.type == NSEventTypeFlagsChanged) {
+        OpenVanilla::SimplexShiftAction shiftAction = OpenVanilla::SimplexShiftAction::None;
+        if ([self builtInSimplexActive]) {
+            shiftAction = [self trackSimplexShiftEvent:event];
+        } else {
+            OpenVanilla::SharedSimplexShiftToggle().cancelGesture();
+        }
+
         NSString *sharedKeyboardLayout = [[OVModuleManager defaultManager] sharedAlphanumericKeyboardLayoutIdentifier];
         NSString *inputMethodKeyboardLayout = [[OVModuleManager defaultManager] alphanumericKeyboardLayoutForInputMethod:[OVModuleManager defaultManager].activeInputMethodIdentifier];
         if ((event.modifierFlags & NSEventModifierFlagShift) &&
             [OVModuleManager defaultManager].fallbackToSharedAlphanumericKeyboardLayoutWhenShiftPressed
             ) {
             [client overrideKeyboardWithKeyboardNamed:sharedKeyboardLayout];
-            return NO;
+        } else {
+            [client overrideKeyboardWithKeyboardNamed:inputMethodKeyboardLayout];
         }
-        [client overrideKeyboardWithKeyboardNamed:inputMethodKeyboardLayout];
+        if (shiftAction == OpenVanilla::SimplexShiftAction::Toggle) {
+            [self applySimplexShiftTap:client];
+            return YES;
+        }
         return NO;
     }
 
     if (event.type != NSEventTypeKeyDown) {
         return NO;
+    }
+
+    if ([self builtInSimplexActive]) {
+        OpenVanilla::SharedSimplexShiftToggle().noteKeyDown();
+        [self hideSimplexModeTooltipIfShown];
+        if (OpenVanilla::RouteSimplexKeyDown(true, OpenVanilla::SharedSimplexShiftToggle().englishMode()) == OpenVanilla::SimplexKeyRoute::EnglishPassThrough) {
+            return NO;
+        }
     }
 
     if (_readingText->toolTipText().length() || _composingText->toolTipText().length()) {
@@ -505,6 +546,8 @@ using namespace OpenVanilla;
 
 - (void)handleInputMethodChange:(NSNotification *)notification
 {
+    OpenVanilla::SharedSimplexShiftToggle().cancelGesture();
+    [self hideSimplexModeTooltipIfShown];
     _composingText->clear();
     _readingText->clear();
 
@@ -696,6 +739,105 @@ using namespace OpenVanilla;
         [self stopAssociatedPhrasesContext];
     }
     _associatedPhrasesContextInUse = NO;
+}
+
+- (BOOL)builtInSimplexActive
+{
+    NSString *identifier = [OVModuleManager defaultManager].activeInputMethodIdentifier;
+    if (identifier.length == 0) {
+        return NO;
+    }
+    BOOL custom = [[OVModuleManager defaultManager] isCustomTableBasedInputMethod:identifier];
+    return OpenVanilla::IsBuiltInSimplexTarget(identifier.UTF8String, custom);
+}
+
+- (OpenVanilla::SimplexShiftAction)trackSimplexShiftEvent:(NSEvent *)event
+{
+    OpenVanilla::SimplexShiftSides sides = OpenVanilla::SidesFromModifierBits((uint32_t)event.modifierFlags, (uint16_t)event.keyCode);
+    OpenVanilla::SimplexShiftEvent shiftEvent;
+    shiftEvent.leftDown = sides.leftDown;
+    shiftEvent.rightDown = sides.rightDown;
+    NSEventModifierFlags flags = event.modifierFlags;
+    shiftEvent.commandDown = (flags & NSEventModifierFlagCommand) != 0;
+    shiftEvent.optionDown = (flags & NSEventModifierFlagOption) != 0;
+    shiftEvent.controlDown = (flags & NSEventModifierFlagControl) != 0;
+    if (event.timestamp <= 0) {
+        shiftEvent.timeNs = 0;
+    } else {
+        shiftEvent.timeNs = (uint64_t)(event.timestamp * 1000000000.0);
+    }
+    return OpenVanilla::SharedSimplexShiftToggle().flagsChanged(shiftEvent);
+}
+
+- (BOOL)simplexCompositionIsPending
+{
+    if (_associatedPhrasesContextInUse || !_readingText->isEmpty() || !_composingText->isEmpty() || _composingText->isCommitted()) {
+        return YES;
+    }
+    OVOneDimensionalCandidatePanelImpl *panel = dynamic_cast<OVOneDimensionalCandidatePanelImpl *>([OVModuleManager defaultManager].candidateService->currentCandidatePanel());
+    return panel && (panel->isInControl() || panel->isVisible());
+}
+
+- (void)applySimplexShiftTap:(id)client
+{
+    OpenVanilla::SimplexShiftToggle &session = OpenVanilla::SharedSimplexShiftToggle();
+    OpenVanilla::SimplexShiftResolution resolution = OpenVanilla::ApplySimplexShiftTap(session, true, [self simplexCompositionIsPending]);
+    if (resolution == OpenVanilla::SimplexShiftResolution::PreservedPending) {
+        [self presentSimplexPendingPrompt:client];
+        return;
+    }
+    if (resolution == OpenVanilla::SimplexShiftResolution::Switched) {
+        [self presentSimplexModeTooltip:client];
+    }
+}
+
+- (void)presentSimplexPendingPrompt:(id)client
+{
+    NSString *title = NSLocalizedString(@"Finish or cancel the current composition before switching.", @"");
+    OVModuleManager *manager = [OVModuleManager defaultManager];
+    [manager.toolTipWindowController showTooltip:title atPoint:[self caretOriginForClient:client]];
+    [manager.toolTipWindowController.window orderFront:self];
+    OpenVanilla::SharedSimplexShiftToggle().markModeTooltipShown();
+}
+
+- (void)presentSimplexModeTooltip:(id)client
+{
+    BOOL english = OpenVanilla::SharedSimplexShiftToggle().englishMode();
+    NSString *title = english ? NSLocalizedString(@"Simplex: English", @"") : NSLocalizedString(@"Simplex: Chinese", @"");
+    OVModuleManager *manager = [OVModuleManager defaultManager];
+    [manager.toolTipWindowController showTooltip:title atPoint:[self caretOriginForClient:client]];
+    [manager.toolTipWindowController.window orderFront:self];
+    OpenVanilla::SharedSimplexShiftToggle().markModeTooltipShown();
+}
+
+- (NSPoint)caretOriginForClient:(id)client
+{
+    NSRect lineHeightRect = NSMakeRect(0.0, 0.0, 16.0, 16.0);
+    if (client && [client respondsToSelector:@selector(attributesForCharacterIndex:lineHeightRectangle:)]) {
+        @try {
+            [client attributesForCharacterIndex:0 lineHeightRectangle:&lineHeightRect];
+            return lineHeightRect.origin;
+        } @catch (NSException *exception) {
+        }
+    }
+    return [NSEvent mouseLocation];
+}
+
+- (void)hideSimplexModeTooltipIfShown
+{
+    if (OpenVanilla::SharedSimplexShiftToggle().consumeModeTooltipShown()) {
+        [[OVModuleManager defaultManager].toolTipWindowController.window orderOut:self];
+    }
+}
+
+- (void)toggleSimplexChineseEnglishModeAction:(id)sender
+{
+    (void)sender;
+    if (![self builtInSimplexActive]) {
+        return;
+    }
+    OpenVanilla::SharedSimplexShiftToggle().cancelGesture();
+    [self applySimplexShiftTap:_currentClient];
 }
 
 - (void)stopAssociatedPhrasesContext

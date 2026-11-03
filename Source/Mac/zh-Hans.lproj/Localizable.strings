@@ -157,3 +157,8 @@
 "Advanced" = "高级设置";
 "Create System Report" = "产生系统报告";
 "You can create a system report and attach it when filing an issue, so the developers can help you better." = "当您在回报问题的时候，有时您可以提供一份系统报告，可以让开发团队更了解您的问题。";
+
+/* Built-in Simplex Shift toggle. */
+"Simplex: Chinese" = "简易：中文";
+"Simplex: English" = "简易：英文";
+"Finish or cancel the current composition before switching." = "请先完成或取消目前组字。";

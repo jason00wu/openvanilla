@@ -18,3 +18,11 @@ jobs:
         run: xcodebuild -scheme OpenVanilla -configuration Release build
       - name: Build
         run: xcodebuild -scheme OpenVanillaInstaller -configuration Release build
+
+  simplex-shift-logic:
+    name: Simplex shift logic
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run simplex shift tests
+        run: sh Tests/run-simplex-shift-tests.sh

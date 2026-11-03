@@ -158,3 +158,8 @@
 "Create System Report" = "產生系統報告";
 "You can create a system report and attach it when filing an issue, so the developers can help you better." = "當您在回報問題的時候，有時您可以提供一份系統報告，可以讓開發團隊更了解您的問題。";
 
+/* Built-in Simplex Shift toggle. */
+"Simplex: Chinese" = "速成：中文";
+"Simplex: English" = "速成：英文";
+"Finish or cancel the current composition before switching." = "請先完成或取消目前組字。";
+
