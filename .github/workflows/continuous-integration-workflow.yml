@@ -11,13 +11,42 @@ jobs:
           xcode-version: "^26.0.1"
       - uses: actions/checkout@v1
       - name: Clean
-        run: xcodebuild -scheme OpenVanilla -configuration Release clean
+        run: xcodebuild -scheme OpenVanilla -configuration Release -derivedDataPath build/dd clean
       - name: Clean
-        run: xcodebuild -scheme OpenVanillaInstaller -configuration Release clean
+        run: xcodebuild -scheme OpenVanillaInstaller -configuration Release -derivedDataPath build/dd clean
       - name: Build
-        run: xcodebuild -scheme OpenVanilla -configuration Release build
+        run: xcodebuild -scheme OpenVanilla -configuration Release -derivedDataPath build/dd build
       - name: Build
-        run: xcodebuild -scheme OpenVanillaInstaller -configuration Release build
+        run: xcodebuild -scheme OpenVanillaInstaller -configuration Release -derivedDataPath build/dd build
+      - name: Package installer artifact
+        run: |
+          set -eu
+          APP="build/dd/Build/Products/Release/OpenVanilla.app"
+          INSTALLER="build/dd/Build/Products/Release/OpenVanillaInstaller.app"
+          test -d "$APP"
+          test -d "$INSTALLER"
+          git rev-parse HEAD > SOURCE_COMMIT
+          {
+            echo "commit $(cat SOURCE_COMMIT)"
+            lipo -info "$APP/Contents/MacOS/OpenVanilla"
+            lipo -info "$INSTALLER/Contents/MacOS/OpenVanillaInstaller"
+            codesign -dv --verbose=4 "$APP" 2>&1 || true
+            codesign -dv --verbose=4 "$INSTALLER" 2>&1 || true
+          } > SIGNING.txt
+          ditto -c -k --keepParent "$APP" OpenVanilla.app.zip
+          ditto -c -k --keepParent "$INSTALLER" OpenVanillaInstaller.app.zip
+          shasum -a 256 OpenVanilla.app.zip OpenVanillaInstaller.app.zip SOURCE_COMMIT SIGNING.txt > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openvanilla-fork-installer
+          path: |
+            OpenVanilla.app.zip
+            OpenVanillaInstaller.app.zip
+            SOURCE_COMMIT
+            SIGNING.txt
+            SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
 
   simplex-shift-logic:
     name: Simplex shift logic
