@@ -34,12 +34,21 @@ enum class SimplexKeyRoute {
     EnglishPassThrough
 };
 
-// A valid tap while composition or candidates are pending keeps the mode and
-// the buffers. The refused tap is not stored for later.
+// Chinese plus pending: the tap switches to English and the caller must drop
+// the uncommitted radicals, candidates and associated-phrase UI without
+// inserting them. English plus pending still does not switch. Nothing is
+// stored for a later automatic toggle.
 enum class SimplexShiftResolution {
     NotATap,
     Switched,
-    PreservedPending
+    PreservedPending,
+    CancelPendingAndSwitch
+};
+
+enum class SimplexPunctuationDecision {
+    NotSpecial,
+    DirectHalfwidth,
+    KeepPending
 };
 
 inline SimplexShiftResolution ApplySimplexShiftTap(class SimplexShiftToggle &session, bool validTap, bool hasPendingComposition);
@@ -227,11 +236,44 @@ inline SimplexShiftResolution ApplySimplexShiftTap(SimplexShiftToggle &session, 
     if (!validTap) {
         return SimplexShiftResolution::NotATap;
     }
+    if (hasPendingComposition && !session.englishMode()) {
+        session.toggleEnglishMode();
+        return SimplexShiftResolution::CancelPendingAndSwitch;
+    }
     if (hasPendingComposition) {
         return SimplexShiftResolution::PreservedPending;
     }
     session.toggleEnglishMode();
     return SimplexShiftResolution::Switched;
+}
+
+// Unshifted "." and "," in built-in Simplex Chinese. Shift, Command, Option
+// and Control stay on the existing path. A pending composition is left alone.
+inline SimplexPunctuationDecision DecideSimplexUnshiftedPunctuation(bool builtInSimplexChinese, bool shiftOrChord, bool pending, char key)
+{
+    if (!builtInSimplexChinese || shiftOrChord || (key != '.' && key != ',')) {
+        return SimplexPunctuationDecision::NotSpecial;
+    }
+    if (pending) {
+        return SimplexPunctuationDecision::KeepPending;
+    }
+    return SimplexPunctuationDecision::DirectHalfwidth;
+}
+
+// Built-in Simplex Chinese ignores Caps Lock as an English bypass. The caller
+// still passes Caps Lock through for every other input method, and for
+// Simplex English mode, where the app applies normal letter case.
+inline bool SimplexCapsLockBypassesChinese(bool builtInSimplexChinese)
+{
+    return !builtInSimplexChinese;
+}
+
+inline char NormalizeSimplexRadical(char keyCode)
+{
+    if (keyCode >= 'A' && keyCode <= 'Z') {
+        return (char)(keyCode - 'A' + 'a');
+    }
+    return keyCode;
 }
 
 }

@@ -13,6 +13,7 @@ static int g_failed = 0;
     } while (0)
 
 using OpenVanilla::SimplexKeyRoute;
+using OpenVanilla::SimplexPunctuationDecision;
 using OpenVanilla::SimplexShiftAction;
 using OpenVanilla::SimplexShiftEvent;
 using OpenVanilla::SimplexShiftResolution;
@@ -163,22 +164,41 @@ static void TestPendingPreservedAndNotDeferred()
     SimplexShiftToggle chinese;
     EXPECT(Tap(chinese, true, 1000, 1000) == SimplexShiftAction::Toggle);
     EXPECT(chinese.englishMode() == false);
-    EXPECT(OpenVanilla::ApplySimplexShiftTap(chinese, true, true) == SimplexShiftResolution::PreservedPending);
-    EXPECT(chinese.englishMode() == false);
+    EXPECT(OpenVanilla::ApplySimplexShiftTap(chinese, true, true) == SimplexShiftResolution::CancelPendingAndSwitch);
+    EXPECT(chinese.englishMode() == true);
     EXPECT(chinese.flagsChanged(Ev(false, false, false, false, false, 2000)) == SimplexShiftAction::None);
     EXPECT(OpenVanilla::ApplySimplexShiftTap(chinese, false, false) == SimplexShiftResolution::NotATap);
-    EXPECT(chinese.englishMode() == false);
+    EXPECT(chinese.englishMode() == true);
 
     AcceptIdleTap(chinese, false, 5000, 1000);
-    EXPECT(chinese.englishMode() == true);
+    EXPECT(chinese.englishMode() == false);
 
     SimplexShiftToggle english;
     english.toggleEnglishMode();
     EXPECT(Tap(english, true, 1000, 1000) == SimplexShiftAction::Toggle);
     EXPECT(OpenVanilla::ApplySimplexShiftTap(english, true, true) == SimplexShiftResolution::PreservedPending);
     EXPECT(english.englishMode() == true);
-    EXPECT(OpenVanilla::ApplySimplexShiftTap(english, true, true) == SimplexShiftResolution::PreservedPending);
-    EXPECT(english.englishMode() == true);
+    EXPECT(OpenVanilla::ApplySimplexShiftTap(english, true, false) == SimplexShiftResolution::Switched);
+    EXPECT(english.englishMode() == false);
+}
+
+static void TestPunctuationAndCapsLock()
+{
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, false, '.') == SimplexPunctuationDecision::DirectHalfwidth);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, false, ',') == SimplexPunctuationDecision::DirectHalfwidth);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, true, '.') == SimplexPunctuationDecision::KeepPending);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, true, ',') == SimplexPunctuationDecision::KeepPending);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, true, false, '.') == SimplexPunctuationDecision::NotSpecial);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, true, true, ',') == SimplexPunctuationDecision::NotSpecial);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(true, false, false, '>') == SimplexPunctuationDecision::NotSpecial);
+    EXPECT(OpenVanilla::DecideSimplexUnshiftedPunctuation(false, false, false, '.') == SimplexPunctuationDecision::NotSpecial);
+
+    EXPECT(OpenVanilla::SimplexCapsLockBypassesChinese(true) == false);
+    EXPECT(OpenVanilla::SimplexCapsLockBypassesChinese(false) == true);
+    EXPECT(OpenVanilla::NormalizeSimplexRadical('A') == 'a');
+    EXPECT(OpenVanilla::NormalizeSimplexRadical('Z') == 'z');
+    EXPECT(OpenVanilla::NormalizeSimplexRadical('m') == 'm');
+    EXPECT(OpenVanilla::NormalizeSimplexRadical('.') == '.');
 }
 
 static void TestModifierBits()
@@ -232,6 +252,7 @@ int main()
     TestFocusLossKeepsMode();
     TestTargetsAndRoutes();
     TestPendingPreservedAndNotDeferred();
+    TestPunctuationAndCapsLock();
     TestModifierBits();
     TestSharedSession();
     if (g_failed) {

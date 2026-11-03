@@ -53,6 +53,7 @@ using namespace OpenVanilla;
 - (BOOL)simplexCompositionIsPending;
 - (OpenVanilla::SimplexShiftAction)trackSimplexShiftEvent:(NSEvent *)event;
 - (void)applySimplexShiftTap:(id)client;
+- (void)discardUncommittedSimplexComposition:(id)client;
 - (void)presentSimplexModeTooltip:(id)client;
 - (void)presentSimplexPendingPrompt:(id)client;
 - (NSPoint)caretOriginForClient:(id)client;
@@ -319,6 +320,27 @@ using namespace OpenVanilla;
         if (OpenVanilla::RouteSimplexKeyDown(true, OpenVanilla::SharedSimplexShiftToggle().englishMode()) == OpenVanilla::SimplexKeyRoute::EnglishPassThrough) {
             return NO;
         }
+        NSString *charsForPunctuation = event.characters;
+        char punctuation = 0;
+        if (charsForPunctuation.length == 1) {
+            unichar punctuationChar = [charsForPunctuation characterAtIndex:0];
+            if (punctuationChar == '.' || punctuationChar == ',') {
+                punctuation = (char)punctuationChar;
+            }
+        }
+        NSEventModifierFlags punctuationFlags = event.modifierFlags;
+        bool punctuationChord = (punctuationFlags & (NSEventModifierFlagShift | NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl)) != 0;
+        OpenVanilla::SimplexPunctuationDecision punctuationDecision = OpenVanilla::DecideSimplexUnshiftedPunctuation(
+            true, punctuationChord, [self simplexCompositionIsPending], punctuation);
+        if (punctuationDecision == OpenVanilla::SimplexPunctuationDecision::DirectHalfwidth) {
+            NSString *halfwidth = punctuation == '.' ? @"." : @",";
+            [client insertText:halfwidth replacementRange:NSMakeRange(NSNotFound, NSNotFound)];
+            return YES;
+        }
+        if (punctuationDecision == OpenVanilla::SimplexPunctuationDecision::KeepPending) {
+            [OVModuleManager defaultManager].loaderService->beep();
+            return YES;
+        }
     }
 
     if (_readingText->toolTipText().length() || _composingText->toolTipText().length()) {
@@ -443,6 +465,14 @@ using namespace OpenVanilla;
         }
 
         unicharCode = remappedKeyCode;
+    }
+
+    bool builtInSimplexChinese = [self builtInSimplexActive] && !OpenVanilla::SharedSimplexShiftToggle().englishMode();
+    if (builtInSimplexChinese && !OpenVanilla::SimplexCapsLockBypassesChinese(true) && capsLock && !shift && !ctrl && !opt && !cmd) {
+        if (unicharCode >= 'A' && unicharCode <= 'Z') {
+            unicharCode = (UniChar)OpenVanilla::NormalizeSimplexRadical((char)unicharCode);
+        }
+        capsLock = false;
     }
 
     if (unicharCode < 128) {
@@ -782,12 +812,34 @@ using namespace OpenVanilla;
 {
     OpenVanilla::SimplexShiftToggle &session = OpenVanilla::SharedSimplexShiftToggle();
     OpenVanilla::SimplexShiftResolution resolution = OpenVanilla::ApplySimplexShiftTap(session, true, [self simplexCompositionIsPending]);
+    if (resolution == OpenVanilla::SimplexShiftResolution::CancelPendingAndSwitch) {
+        [self discardUncommittedSimplexComposition:client];
+        [self presentSimplexModeTooltip:client];
+        return;
+    }
     if (resolution == OpenVanilla::SimplexShiftResolution::PreservedPending) {
         [self presentSimplexPendingPrompt:client];
         return;
     }
     if (resolution == OpenVanilla::SimplexShiftResolution::Switched) {
         [self presentSimplexModeTooltip:client];
+    }
+}
+
+- (void)discardUncommittedSimplexComposition:(id)client
+{
+    NSAttributedString *empty = [[NSAttributedString alloc] initWithString:@""];
+    if (client && [client respondsToSelector:@selector(setMarkedText:selectionRange:replacementRange:)]) {
+        [client setMarkedText:empty selectionRange:NSMakeRange(0, 0) replacementRange:NSMakeRange(NSNotFound, NSNotFound)];
+    }
+    _readingText->clear();
+    _composingText->clear();
+    _composingText->finishCommit();
+    [OVModuleManager defaultManager].candidateService->resetAll();
+    [self stopAssociatedPhrasesContext];
+    [self startOrStopAssociatedPhrasesContext];
+    if (_inputMethodContext) {
+        _inputMethodContext->startSession([OVModuleManager defaultManager].loaderService);
     }
 }
 
